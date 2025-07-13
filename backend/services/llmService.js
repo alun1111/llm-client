@@ -10,7 +10,7 @@ class LLMService {
       },
       anthropic: {
         baseURL: 'https://api.anthropic.com/v1',
-        models: ['claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+        models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
         apiKey: process.env.ANTHROPIC_API_KEY
       }
     };
