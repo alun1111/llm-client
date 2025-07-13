@@ -1,0 +1,41 @@
+{
+  "name": "LLM Client Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [3000, 5000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Frontend React App",
+      "onAutoForward": "openBrowser"
+    },
+    "5000": {
+      "label": "Backend API Server"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-eslint",
+        "ms-vscode.vscode-json",
+        "ms-vscode.vscode-node-extension-pack",
+        "ms-vscode-remote.remote-containers"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "typescript.preferences.importModuleSpecifier": "relative"
+      }
+    }
+  },
+  "postCreateCommand": "npm run install:all",
+  "remoteUser": "node"
+}
