@@ -2,12 +2,94 @@ const express = require('express');
 const LLMService = require('../services/llmService');
 const router = express.Router();
 
+function isBirdRelated(message) {
+  const birdKeywords = [
+    'bird', 'birds', 'robin', 'sparrow', 'eagle', 'hawk', 'owl', 'cardinal', 
+    'blue jay', 'hummingbird', 'feathers', 'wingspan', 'nest', 'chirp', 'tweet',
+    'species', 'avian', 'ornithology', 'migration', 'habitat', 'birdwatching',
+    'scientific name', 'family', 'diet', 'size'
+  ];
+  
+  const lowerMessage = message.toLowerCase();
+  return birdKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
+function extractBirdName(message) {
+  const birdNames = ['robin', 'sparrow', 'eagle', 'hawk', 'owl', 'cardinal', 'blue jay', 'hummingbird'];
+  const lowerMessage = message.toLowerCase();
+  
+  for (const birdName of birdNames) {
+    if (lowerMessage.includes(birdName)) {
+      return birdName;
+    }
+  }
+  return null;
+}
+
+async function enrichWithBirdInfo(message, mcpService) {
+  try {
+    if (!mcpService.isReady()) {
+      console.log('[MCP] MCP Service not ready for bird info enrichment');
+      return null;
+    }
+
+    console.log('[MCP] Attempting to enrich message with bird information:', message.substring(0, 100));
+
+    const birdName = extractBirdName(message);
+    if (birdName) {
+      console.log('[MCP] Extracted bird name:', birdName);
+      const birdInfo = await mcpService.executeRequest('bird-reference', 'getBirdInfo', { birdName });
+      if (birdInfo.success && birdInfo.result.success) {
+        console.log('[MCP] Successfully retrieved specific bird info for:', birdName);
+        return birdInfo.result.bird;
+      }
+    }
+
+    console.log('[MCP] Performing bird search query');
+    const searchResult = await mcpService.executeRequest('bird-reference', 'searchBirds', { 
+      query: message.toLowerCase(), 
+      limit: 3 
+    });
+    
+    if (searchResult.success && searchResult.result.success && searchResult.result.results.length > 0) {
+      console.log(`[MCP] Bird search returned ${searchResult.result.results.length} results`);
+      return searchResult.result.results;
+    } else {
+      console.log('[MCP] Bird search returned no results');
+    }
+  } catch (error) {
+    console.error('[MCP] Error enriching with bird info:', error);
+  }
+  return null;
+}
+
 router.post('/', async (req, res) => {
   try {
     const { message, model, context, stream = false } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
+    }
+
+    let enrichedContext = context || '';
+    
+    if (isBirdRelated(message)) {
+      console.log('[MCP] Message detected as bird-related, attempting MCP enrichment');
+      const birdInfo = await enrichWithBirdInfo(message, req.mcpService);
+      if (birdInfo) {
+        console.log('[MCP] Successfully enriched context with bird information');
+        if (Array.isArray(birdInfo)) {
+          enrichedContext += `\n\nRelevant bird information found:\n${birdInfo.map(bird => 
+            `- ${bird.name} (${bird.scientific_name}): ${bird.habitat}, diet: ${bird.diet}`
+          ).join('\n')}`;
+        } else {
+          enrichedContext += `\n\nBird Information:\n- Name: ${birdInfo.name}\n- Scientific Name: ${birdInfo.scientific_name}\n- Family: ${birdInfo.family}\n- Habitat: ${birdInfo.habitat}\n- Diet: ${birdInfo.diet}\n- Size: ${birdInfo.size}\n- Related Species: ${birdInfo.related_species.join(', ')}`;
+        }
+      } else {
+        console.log('[MCP] No bird information retrieved from MCP service');
+      }
+    } else {
+      console.log('[MCP] Message not bird-related, skipping MCP enrichment');
     }
 
     const llmService = new LLMService();
@@ -17,14 +99,14 @@ router.post('/', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      await llmService.streamChat(message, model, context, (chunk) => {
+      await llmService.streamChat(message, model, enrichedContext, (chunk) => {
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       });
 
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      const response = await llmService.chat(message, model, context);
+      const response = await llmService.chat(message, model, enrichedContext);
       res.json({ response });
     }
   } catch (error) {
