@@ -51,9 +51,20 @@ class LLMService {
     const messages = [];
     
     if (context && context.length > 0) {
-      const contextText = context.map(file => 
-        `File: ${file.path}\n${file.content}`
-      ).join('\n\n---\n\n');
+      let contextText;
+      
+      if (Array.isArray(context)) {
+        // Handle array of file objects
+        contextText = context.map(file => 
+          `File: ${file.path}\n${file.content}`
+        ).join('\n\n---\n\n');
+      } else if (typeof context === 'string') {
+        // Handle string context (e.g., from MCP enrichment)
+        contextText = context;
+      } else {
+        // Handle other types by converting to string
+        contextText = String(context);
+      }
       
       messages.push({
         role: 'system',

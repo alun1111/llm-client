@@ -72,12 +72,15 @@ router.post('/', async (req, res) => {
     }
 
     let enrichedContext = context || '';
+    let usedMcpServices = [];
     
     if (isBirdRelated(message)) {
       console.log('[MCP] Message detected as bird-related, attempting MCP enrichment');
       const birdInfo = await enrichWithBirdInfo(message, req.mcpService);
       if (birdInfo) {
         console.log('[MCP] Successfully enriched context with bird information');
+        usedMcpServices.push('bird-reference');
+        
         if (Array.isArray(birdInfo)) {
           enrichedContext += `\n\nRelevant bird information found:\n${birdInfo.map(bird => 
             `- ${bird.name} (${bird.scientific_name}): ${bird.habitat}, diet: ${bird.diet}`
@@ -99,15 +102,30 @@ router.post('/', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      let responseContent = '';
       await llmService.streamChat(message, model, enrichedContext, (chunk) => {
+        responseContent += chunk;
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       });
+
+      // Add references at the end for streaming responses
+      if (usedMcpServices.length > 0) {
+        const referencesText = `\n\n## References\n- MCP Services: ${usedMcpServices.join(', ')}`;
+        res.write(`data: ${JSON.stringify({ content: referencesText })}\n\n`);
+      }
 
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
       const response = await llmService.chat(message, model, enrichedContext);
-      res.json({ response });
+      
+      // Add references to non-streaming response
+      let fullResponse = response;
+      if (usedMcpServices.length > 0) {
+        fullResponse += `\n\n## References\n- MCP Services: ${usedMcpServices.join(', ')}`;
+      }
+      
+      res.json({ response: fullResponse });
     }
   } catch (error) {
     console.error('Chat error:', error);
